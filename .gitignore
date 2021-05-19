@@ -1,0 +1,15 @@
+#*
+*#
+*.db
+*.pyc
+*.swp
+*~
+.cache
+.env
+/*.egg-info
+/.scrapy/
+/.tox/
+/.vscode/
+/.idea/
+/build
+/dist

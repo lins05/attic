@@ -1,0 +1,100 @@
+#!/bin/bash
+
+#  curl -o /usr/local/bin/repeat-run -sSL https://raw.githubusercontent.com/lins05/attic/master/repeat-run && chmod +x /usr/local/bin/repeat-run
+
+set -e
+set -o pipefail
+
+function on_ctrl_c_pressed () {
+    printf "\n\n\033[33mYou have pressed Ctrl-C. Program is interrupted.\033[m\n\n"
+    exit 1;
+}
+
+trap on_ctrl_c_pressed 2
+
+techo() {
+    echo -n "[$(date +'%Y-%m-%d %H:%M:%S')][progress] "
+    echo "$@"
+}
+
+main() {
+    local timeout maxretry retried wait until_success
+    while [[ $# -gt 0 ]]
+    do
+        case "$1" in
+            -w|--wait)
+                                                wait=$2                   ; shift 2 ;;
+            -t|--timeout)
+                                                timeout=$2                ; shift 2 ;;
+            -n|--max-retry)
+                                                maxretry=$2               ; shift 2 ;;
+            # Useful for idempotent commands like rsync
+            -s|--until-success)
+                                                until_success=true        ; shift 1 ;;
+            *)                                  break;
+        esac
+    done
+
+    if [[ $maxretry != "" ]]; then
+        techo "Going to run command \"$*\" $maxretry times"
+    elif [[ $until_success == "true" ]]; then
+        techo "Going to run command \"$*\" until it succeeds"
+    elif [[ $timeout == "" ]]; then
+        techo "Going to run command \"$*\" forever"
+    else
+        techo "Going to run command \"$*\" every $timeout seconds"
+    fi
+
+    retried=0
+    while true; do
+        if [[ $maxretry != "" ]]; then
+           if [[ $retried -ge $maxretry ]]; then
+               techo "Max retried reached, abort"
+               exit 1
+           else
+               techo "Retry for the $retried time"
+           fi
+        fi
+        starttime=$(date +%s)
+        if [[ $timeout == "" ]]; then
+            echo "----------------"
+            set +e -x
+            "$@"
+            exitcode=$?
+            set -e +x
+            echo "----------------"
+        else
+            set +e -x
+            # --foreground is required, otherwise timeout won't terminate on ctrl-c
+            # "timeout --help" tells us:
+            #
+            # --foreground
+            #            when not running timeout directly from a shell prompt,
+            #              allow COMMAND to read from the TTY and get TTY signals;
+            #              in this mode, children of COMMAND will not be timed out
+            # timeout --foreground --signal=KILL -k$timeout $timeout "$@"
+            timeout --foreground -k$timeout $timeout "$@"
+            # TODO: add a random jitter
+            exitcode=$?
+            set -e +x
+        fi
+        if [[ $until_success == "true" && $exitcode -eq 0 ]]; then
+            exit 0
+        fi
+        endtime=$(date +%s)
+        if [[ $((endtime-starttime)) -lt 2 ]]; then
+            techo "command restarting too fast, would sleep 2 second"
+            sleep 2
+        else
+            sleep 0.5
+        fi
+        if [[ $wait != "" ]]; then
+            techo "Custom sleep $wait seconds"
+            sleep $wait
+        fi
+        techo "Restarting command \"$*\""
+        let retried++ || true
+    done
+}
+
+main "$@"
