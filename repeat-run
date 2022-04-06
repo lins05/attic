@@ -31,6 +31,8 @@ main() {
             # Useful for idempotent commands like rsync
             -s|--until-success)
                                                 until_success=true        ; shift 1 ;;
+            -f|--until-fail)
+                                                until_fail=true        ; shift 1 ;;
             *)                                  break;
         esac
     done
@@ -39,6 +41,8 @@ main() {
         techo "Going to run command \"$*\" $maxretry times"
     elif [[ $until_success == "true" ]]; then
         techo "Going to run command \"$*\" until it succeeds"
+    elif [[ $until_fail == "true" ]]; then
+        techo "Going to run command \"$*\" until it fails"
     elif [[ $timeout == "" ]]; then
         techo "Going to run command \"$*\" forever"
     else
@@ -81,9 +85,14 @@ main() {
         if [[ $until_success == "true" && $exitcode -eq 0 ]]; then
             exit 0
         fi
+        if [[ $until_fail == "true" && $exitcode -ne 0 ]]; then
+            exit 0
+        fi
         endtime=$(date +%s)
         if [[ $((endtime-starttime)) -lt 2 ]]; then
-            techo "command restarting too fast, would sleep 2 second"
+            if [[ $wait -lt 2 ]]; then
+                techo "command restarting too fast, would sleep 2 second"
+            fi
             sleep 2
         else
             sleep 0.5
